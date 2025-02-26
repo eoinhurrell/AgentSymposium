@@ -1,122 +1,114 @@
-"""
-Base agent interface for the VSM-based code review system.
-"""
+from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Protocol, Union
+from typing import Any, Dict, List, Optional, TypeVar, Union, Callable
+from enum import Enum
+from pathlib import Path
+from pydantic import BaseModel, Field
+from langchain_core.language_models.llms import BaseLLM
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
+from langgraph.graph import StateGraph, END
 
-from symposium.models.base import CodeFile, PullRequest, ReviewComment
+from symposium.models.base import (
+    SeverityLevel,
+    CodeFile,
+    CodeLocation,
+    PullRequest,
+    PullRequestMetadata,
+    ReviewComment,
+)
 
 
-class BaseAgent(ABC):
-    """Abstract base class for all agents in the system."""
+# Base State for our Symposium workflow
+class SymposiumState(BaseModel):
+    """State for the Symposium workflow"""
 
-    def __init__(self, name: str):
-        """Initialize the agent with a name."""
+    messages: List[Union[AIMessage, HumanMessage, SystemMessage]] = Field(
+        default_factory=list
+    )
+    current_agent: str = Field(default="")
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    context: Dict[str, Any] = Field(default_factory=dict)
+    outputs: Dict[str, Any] = Field(default_factory=dict)
+
+    # Symposium-specific fields
+    pull_request: Optional[PullRequest] = None
+    review_comments: List[ReviewComment] = Field(default_factory=list)
+
+    def add_message(
+        self, message: Union[AIMessage, HumanMessage, SystemMessage]
+    ) -> None:
+        """Add a message to the state"""
+        self.messages.append(message)
+
+    def add_review_comment(self, comment: ReviewComment) -> None:
+        """Add a review comment to the state"""
+        self.review_comments.append(comment)
+        # If we have a pull request, also add it there
+        if self.pull_request:
+            self.pull_request.add_comment(comment)
+
+    def get_comments_by_severity(self, severity: SeverityLevel) -> List[ReviewComment]:
+        """Get comments by severity level"""
+        return [c for c in self.review_comments if c.severity == severity]
+
+    def get_comments_by_agent(self, agent_name: str) -> List[ReviewComment]:
+        """Get comments by source agent"""
+        return [c for c in self.review_comments if c.source_agent == agent_name]
+
+
+class BaseAgent:
+    """Base Agent class compatible with LangGraph for Symposium"""
+
+    def __init__(
+        self,
+        name: str,
+        llm: BaseLLM,
+        system_prompt: str = "",
+        config: Optional[RunnableConfig] = None,
+    ):
         self.name = name
+        self.llm = llm
+        self.system_prompt = system_prompt
+        self.config = config or {}
 
-    @abstractmethod
-    async def process(
-        self, input_data: Union[PullRequest, List[ReviewComment], Dict[str, Any]]
-    ) -> Union[List[ReviewComment], Dict[str, Any]]:
-        """
-        Process the input data and return results.
+    def initialize_context(self, state: SymposiumState) -> SymposiumState:
+        """Initialize any agent-specific context"""
+        if self.system_prompt:
+            state.add_message(SystemMessage(content=self.system_prompt))
+        return state
 
-        Args:
-            input_data: The input data to process. Could be a PullRequest,
-                        list of ReviewComment objects, or a dictionary of data.
+    def process(self, state: SymposiumState) -> SymposiumState:
+        """Process the current state and generate a response"""
+        # This method should be implemented by subclasses
+        state.current_agent = self.name
+        return state
 
-        Returns:
-            List of ReviewComment objects or a dictionary with processed data.
-        """
-        pass
+    def execute(self, state: SymposiumState) -> Dict[str, Any]:
+        """Execute any necessary actions and return outputs"""
+        result = {}
+        return result
 
-    @abstractmethod
-    async def generate_output(self) -> Dict[str, Any]:
-        """
-        Generate formatted output from the agent's processing results.
+    def create_review_comment(
+        self,
+        file_path: str,
+        line_start: int,
+        message: str,
+        severity: SeverityLevel = SeverityLevel.MEDIUM,
+        line_end: Optional[int] = None,
+        suggestion: Optional[str] = None,
+        category: Optional[str] = None,
+    ) -> ReviewComment:
+        """Helper method to create a standardized review comment"""
+        location = CodeLocation(
+            file_path=file_path, line_start=line_start, line_end=line_end
+        )
 
-        Returns:
-            A dictionary containing the formatted output from this agent.
-        """
-        pass
-
-    def __str__(self) -> str:
-        """String representation of the agent."""
-        return f"{self.name} Agent"
-
-
-class System1Agent(BaseAgent):
-    """Base class for System 1 (Operational) agents that perform direct code analysis."""
-
-    @abstractmethod
-    async def analyze_file(self, file: CodeFile) -> List[ReviewComment]:
-        """
-        Analyze a single file and return review comments.
-
-        Args:
-            file: The CodeFile to analyze.
-
-        Returns:
-            List of ReviewComment objects.
-        """
-        pass
-
-    async def process(
-        self, input_data: Union[PullRequest, List[CodeFile]]
-    ) -> List[ReviewComment]:
-        """
-        Process files in a pull request or a list of files.
-
-        Args:
-            input_data: Either a PullRequest or a list of CodeFile objects.
-
-        Returns:
-            List of ReviewComment objects.
-        """
-        all_comments = []
-
-        if isinstance(input_data, PullRequest):
-            files = input_data.files
-        else:
-            files = input_data
-
-        for file in files:
-            file_comments = await self.analyze_file(file)
-            for comment in file_comments:
-                # Tag comments with the agent that created them
-                comment.source_agent = self.name
-            all_comments.extend(file_comments)
-
-        return all_comments
-
-    async def generate_output(self) -> Dict[str, Any]:
-        """
-        Generate a dictionary with the agent's results.
-
-        Returns:
-            Dictionary with agent name and comments.
-        """
-        # This method would typically use stored state from process()
-        # For simplicity, this implementation is a placeholder
-        return {"agent": self.name, "comments": []}  # Would contain the actual comments
-
-
-class SystemAgent(BaseAgent):
-    """
-    Base class for higher-level system agents (Systems 2-5)
-    that process the output of other agents.
-    """
-
-    def __init__(self, name: str, system_level: int):
-        """
-        Initialize the higher-level system agent.
-
-        Args:
-            name: The name of the agent.
-            system_level: The VSM system level (2-5).
-        """
-        super().__init__(name)
-        if not 2 <= system_level <= 5:
-            raise ValueError("System level must be between 2 and 5")
-        self.system_level = system_level
+        return ReviewComment(
+            severity=severity,
+            location=location,
+            message=message,
+            suggestion=suggestion,
+            source_agent=self.name,
+            category=category,
+        )
