@@ -4,7 +4,12 @@ version = "0.1.0"
 description = "Multi-Agent Code Review System based on Viable System Model"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["langchain>=0.3.19", "langgraph>=0.2.74", "pydantic>=2.10.5"]
+dependencies = [
+    "langchain>=0.3.19",
+    "langchain-ollama>=0.2.3",
+    "langgraph>=0.2.74",
+    "pydantic>=2.10.5",
+]
 
 [dependency-groups]
 dev = [

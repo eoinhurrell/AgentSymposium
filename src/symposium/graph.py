@@ -1,312 +1,189 @@
-from typing import Dict, List, Any, Optional, Tuple
-import os
-from pathlib import Path
-import argparse
-from datetime import datetime
+from typing import Optional
 
+# LangChain imports
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
+
+# LangGraph imports
 from langgraph.graph import StateGraph, END
 
 from symposium.models.base import (
-    SeverityLevel,
     CodeFile,
     FileMetadata,
     PullRequest,
     PullRequestMetadata,
+    CodeReviewState,
 )
-from symposium.agents import OperationalAgent, CoordinationAgent, SymposiumState
+from symposium.vsm.operational import (
+    system1_complexity_analysis,
+    system1_lint_code,
+    system1_security_check,
+)
+from symposium.vsm.coordination import system2_coordinate_reviews
+from symposium.vsm.control import system3_control_review_process
+from symposium.vsm.intelligence import system4_analyze_context
+from symposium.vsm.policy import system5_make_review_decision
 
 
-def create_symposium_workflow(
-    llm,
-    operational_agent_prompt: Optional[str] = None,
-    coordination_agent_prompt: Optional[str] = None,
-):
-    """Create the Symposium LangGraph workflow with the specified agents."""
-
-    # Initialize agents
-    operational_agent = OperationalAgent(name="OperationalReviewer", llm=llm)
-
-    coordination_agent = CoordinationAgent(name="CoordinationReviewer", llm=llm)
-
-    # Create the workflow graph
-    workflow = StateGraph(SymposiumState)
-
-    # Add nodes
-    workflow.add_node("operational_review", operational_agent.process)
-    workflow.add_node("coordination_review", coordination_agent.process)
-
-    # Define the workflow edges
-    workflow.add_edge("operational_review", "coordination_review")
-    workflow.add_edge("coordination_review", END)
-
-    # Set the entry point
-    workflow.set_entry_point("operational_review")
-
-    return workflow.compile()
+# ======= LANGRAPH AGENT CREATION =======
 
 
-def load_code_files(
-    directory_path: str,
-    file_extensions: List[str] = [
-        ".py",
-        # ".js",
-        # ".ts",
-        # ".java",
-        # ".go",
-        # ".html",
-        # ".css",
-        ".md",
-    ],
-) -> List[Tuple[str, str]]:
+def create_code_review_agent():
     """
-    Load code files from a directory with specified extensions.
+    Creates a LangGraph agent for code review based on the Viable Systems Model.
 
-    Args:
-        directory_path: Path to the directory containing code files
-        file_extensions: List of file extensions to include
+    The agent follows the VSM structure:
+    - System 1 (Operations): Linting, security checking, complexity analysis
+    - System 2 (Coordination): Coordinating review comments
+    - System 3 (Control): Managing the review process
+    - System 4 (Intelligence): Analyzing PR context and environment
+    - System 5 (Policy): Making overall decisions and recommendations
 
     Returns:
-        List of tuples containing (file_path, file_content)
+        A compiled LangGraph workflow for code review
     """
-    code_files = []
+    # Define the state graph
+    workflow = StateGraph(CodeReviewState)
 
-    for root, _, files in os.walk(directory_path):
-        for file in files:
-            if any(file.endswith(ext) for ext in file_extensions):
-                file_path = os.path.join(root, file)
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                    try:
-                        content = f.read()
-                        relative_path = os.path.relpath(file_path, directory_path)
-                        code_files.append((relative_path, content))
-                    except Exception as e:
-                        print(f"Error reading file {file_path}: {e}")
+    # Add nodes for each VSM system
+    # System 1: Operations
+    workflow.add_node("lint_code", system1_lint_code)
+    workflow.add_node("security_check", system1_security_check)
+    workflow.add_node("complexity_analysis", system1_complexity_analysis)
 
-    return code_files
+    # System 2: Coordination
+    workflow.add_node("coordinate_reviews", system2_coordinate_reviews)
+
+    # System 3: Control
+    workflow.add_node("control_review_process", system3_control_review_process)
+
+    # System 4: Intelligence
+    workflow.add_node("analyze_context", system4_analyze_context)
+
+    # System 5: Policy
+    workflow.add_node("make_review_decision", system5_make_review_decision)
+
+    # Define the edges
+    # Start with control as the entry point
+    workflow.set_entry_point("control_review_process")
+
+    # Connect control to the appropriate next nodes based on its decision
+    workflow.add_conditional_edges(
+        "control_review_process",
+        lambda state: state.current_agent if state.current_agent else END,
+        {
+            "linter": "lint_code",
+            "security_checker": "security_check",
+            "complexity_analyzer": "complexity_analysis",
+            "coordinator": "coordinate_reviews",
+            "intelligence": "analyze_context",
+            "policy": "make_review_decision",
+            END: END,  # Handle END case explicitly
+        },
+    )
+
+    # All operations (System 1) go back to control
+    workflow.add_edge("lint_code", "control_review_process")
+    workflow.add_edge("security_check", "control_review_process")
+    workflow.add_edge("complexity_analysis", "control_review_process")
+
+    # Coordination (System 2) goes back to control
+    workflow.add_edge("coordinate_reviews", "control_review_process")
+
+    # Intelligence (System 4) goes back to control
+    workflow.add_edge("analyze_context", "control_review_process")
+
+    # Policy (System 5) goes back to control for final decision
+    workflow.add_edge("make_review_decision", "control_review_process")
+    workflow.add_edge("control_review_process", END)
+
+    # Compile the graph
+    code_review_app = workflow.compile()
+
+    return code_review_app
 
 
-def detect_language(file_path: str) -> str:
-    """Detect the programming language based on file extension."""
-    ext = os.path.splitext(file_path)[1].lower()
-
-    language_map = {
-        ".py": "python",
-        ".js": "javascript",
-        ".ts": "typescript",
-        ".jsx": "jsx",
-        ".tsx": "tsx",
-        ".html": "html",
-        ".css": "css",
-        ".java": "java",
-        ".c": "c",
-        ".cpp": "cpp",
-        ".cs": "csharp",
-        ".go": "go",
-        ".rs": "rust",
-        ".rb": "ruby",
-        ".php": "php",
-        ".md": "markdown",
-    }
-
-    return language_map.get(ext, "plaintext")
+# ======= USAGE EXAMPLE =======
 
 
-def create_pull_request(
-    project_name: str, code_files: List[Tuple[str, str]]
-) -> PullRequest:
+def run_code_review(pull_request: PullRequest, llm: Optional[ChatOllama] = None):
     """
-    Create a PullRequest object from a list of code files.
+    Runs a code review on the given pull request.
 
     Args:
-        project_name: Name of the project
-        code_files: List of tuples containing (file_path, file_content)
+        pull_request: The pull request to review
+        llm: Optional language model for AI-powered reviews
 
     Returns:
-        PullRequest object
+        The final state containing review results
     """
-    pr_metadata = PullRequestMetadata(
-        id=f"PR-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
-        title=f"Code Review for {project_name}",
-        description=f"Automated code review for {project_name} - {len(code_files)} files",
-        author="Symposium",
-        base_branch="main",
-        head_branch="review",
-        created_at=datetime.now().isoformat(),
-        updated_at=datetime.now().isoformat(),
-    )
-
-    pull_request = PullRequest(metadata=pr_metadata)
-
-    for file_path, content in code_files:
-        language = detect_language(file_path)
-
-        file_metadata = FileMetadata(
-            path=file_path,
-            language=language,
-            is_new=False,
-            line_count=len(content.splitlines()),
-        )
-
-        code_file = CodeFile(content=content, metadata=file_metadata)
-
-        pull_request.add_file(code_file)
-
-    return pull_request
-
-
-def generate_markdown_report(state, output_file: str) -> None:
-    """
-    Generate a markdown report from the review comments.
-
-    Args:
-        state: The final state containing review comments
-        output_file: Path to the output markdown file
-    """
-    pr_title = "Code Review"
-    if state["pull_request"] and state["pull_request"].metadata.title:
-        pr_title = state["pull_request"].metadata.title
-
-    with open(output_file, "w", encoding="utf-8") as f:
-        # Write header
-        f.write(f"# {pr_title}\n\n")
-        f.write(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-
-        # Executive summary (if available)
-        executive_summaries = [
-            comment
-            for comment in state["pull_request"].comments
-            if comment.location.file_path == "OVERALL_SUMMARY"
-        ]
-
-        if executive_summaries:
-            f.write("## Executive Summary\n\n")
-            f.write(executive_summaries[0].message)
-            f.write("\n\n")
-
-        # Group comments by file
-        comments_by_file = {}
-        for comment in state["pull_request"].comments:
-            if comment.location.file_path == "OVERALL_SUMMARY":
-                continue
-
-            file_path = comment.location.file_path
-            if file_path not in comments_by_file:
-                comments_by_file[file_path] = []
-            comments_by_file[file_path].append(comment)
-
-        # File summaries first
-        for file_path, comments in comments_by_file.items():
-            summary_comments = [c for c in comments if c.category == "Summary"]
-            if summary_comments:
-                f.write(f"## {file_path} Summary\n\n")
-                f.write(summary_comments[0].message)
-                f.write("\n\n")
-
-        # Detailed comments by file and severity
-        f.write("## Detailed Comments\n\n")
-
-        for file_path, comments in comments_by_file.items():
-            f.write(f"### {file_path}\n\n")
-
-            # Filter out summary comments
-            detailed_comments = [c for c in comments if c.category != "Summary"]
-
-            # Group by severity
-            for severity in [
-                SeverityLevel.CRITICAL,
-                SeverityLevel.HIGH,
-                SeverityLevel.MEDIUM,
-                SeverityLevel.LOW,
-                SeverityLevel.INFO,
-            ]:
-                severity_comments = [
-                    c for c in detailed_comments if c.severity == severity
-                ]
-
-                if severity_comments:
-                    f.write(f"#### {severity.value.upper()} Issues\n\n")
-
-                    for i, comment in enumerate(severity_comments, 1):
-                        f.write(
-                            f"**Issue {i}** (Line {comment.location.line_start})\n\n"
-                        )
-                        f.write(f"{comment.message}\n\n")
-
-                        if comment.suggestion:
-                            f.write("**Suggestion:**\n\n")
-                            f.write(f"{comment.suggestion}\n\n")
-
-                        f.write("---\n\n")
-
-        # Statistics
-        f.write("## Review Statistics\n\n")
-
-        # Count by severity
-        severity_counts = {severity: 0 for severity in SeverityLevel}
-        for comment in state["pull_request"].comments:
-            if (
-                comment.location.file_path != "OVERALL_SUMMARY"
-                and comment.category != "Summary"
-            ):
-                severity_counts[comment.severity] += 1
-
-        f.write("### Issues by Severity\n\n")
-        for severity, count in severity_counts.items():
-            if count > 0:
-                f.write(f"- **{severity.value.upper()}**: {count} issues\n")
-
-        f.write("\n")
-
-        # Count by file
-        f.write("### Issues by File\n\n")
-        for file_path, comments in comments_by_file.items():
-            detailed_count = len([c for c in comments if c.category != "Summary"])
-            if detailed_count > 0:
-                f.write(f"- **{file_path}**: {detailed_count} issues\n")
-
-
-def main():
-    """Main entry point for the Symposium workflow."""
-    parser = argparse.ArgumentParser(description="Run Symposium code review workflow")
-    parser.add_argument(
-        "--directory",
-        "-d",
-        required=True,
-        help="Directory containing code files to review",
-    )
-    parser.add_argument(
-        "--output", "-o", default="review_report.md", help="Output markdown file"
-    )
-    parser.add_argument("--model", default="deepseek-r1:8b", help="Model to use")
-    args = parser.parse_args()
-
-    # Create LLM
-    llm = ChatOllama(model=args.model, temperature=0)
-
-    # Create workflow
-    workflow = create_symposium_workflow(llm)
-
-    # Load code files
-    code_files = load_code_files(args.directory)
-    print(f"Loaded {len(code_files)} code files from {args.directory}")
-
-    # Create pull request
-    project_name = os.path.basename(os.path.abspath(args.directory))
-    pull_request = create_pull_request(project_name, code_files)
+    # Create the agent
+    code_review_agent = create_code_review_agent()
 
     # Create initial state
-    initial_state = SymposiumState(pull_request=pull_request)
+    initial_state = CodeReviewState(
+        pull_request=pull_request,
+        messages=[
+            SystemMessage(content="Code review agent analyzing pull request."),
+            HumanMessage(
+                content=f"Please review PR #{pull_request.metadata.id}: {pull_request.metadata.title}"
+            ),
+        ],
+        # context={"llm": llm},
+    )
 
-    # Run the workflow
-    print("Running Symposium workflow...")
-    final_state = workflow.invoke(initial_state)
-    __import__("ipdb").set_trace()
+    # Run the agent
+    final_state = code_review_agent.invoke(initial_state)
 
-    # Generate markdown report
-    generate_markdown_report(final_state, args.output)
-    print(f"Review report generated: {args.output}")
+    # Return the results
+    return final_state
 
 
+# Example usage
 if __name__ == "__main__":
-    main()
+    # Create a sample pull request
+    sample_pr = PullRequest(
+        metadata=PullRequestMetadata(
+            id="123",
+            title="Add user authentication feature",
+            description="This PR implements basic user authentication using JWT tokens.",
+            author="john.doe",
+            base_branch="main",
+            head_branch="feature/auth",
+            created_at="2025-02-25T10:00:00Z",
+            updated_at="2025-02-26T09:30:00Z",
+        ),
+        files=[
+            CodeFile(
+                content="""
+import jwt
+from flask import request, jsonify
+
+def login():
+    username = request.json.get('username')
+    password = request.json.get('password')
+    
+    # TODO: Implement proper password hashing
+    if username == 'admin' and password == 'password123':
+        secret_key = 'my_super_secret_key'
+        token = jwt.encode({'user': username}, secret_key, algorithm='HS256')
+        return jsonify({'token': token})
+    
+    return jsonify({'error': 'Invalid credentials'}), 401
+                """,
+                metadata=FileMetadata(
+                    path="auth/login.py",
+                    language="python",
+                ),
+            )
+        ],
+    )
+
+    llm = ChatOllama(model="deepseek-r1:8b")
+    # Run the code review
+    result = run_code_review(sample_pr, llm=llm)
+
+    __import__("ipdb").set_trace()
+    # Print the review summary
+    print(result.outputs.get("review_summary", "No summary available"))
+    pass

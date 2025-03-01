@@ -17,7 +17,7 @@ def create_temp_file(content: str, file_extension: str) -> str:
     return path
 
 
-@tool
+@tool()
 def run_linter(code: str, language: str) -> str:
     """
     Run a linter on the provided code snippet.
