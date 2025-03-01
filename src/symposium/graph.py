@@ -1,39 +1,26 @@
-from typing import Optional
-
-# LangChain imports
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_ollama import ChatOllama
-
-# LangGraph imports
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 
 from symposium.models.base import (
-    CodeFile,
-    FileMetadata,
-    PullRequest,
-    PullRequestMetadata,
     CodeReviewState,
 )
-from symposium.vsm.operational import (
-    system1_complexity_analysis,
-    system1_lint_code,
-    system1_security_check,
-)
-from symposium.vsm.coordination import system2_coordinate_reviews
 from symposium.vsm.control import system3_control_review_process
+from symposium.vsm.coordination import system2_coordinate_reviews
 from symposium.vsm.intelligence import system4_analyze_context
+from symposium.vsm.operational import (
+    code_architect_review,
+    performance_guardian_review,
+    security_sentinel_review,
+    integration_specialist_review,
+)
 from symposium.vsm.policy import system5_make_review_decision
-
-
-# ======= LANGRAPH AGENT CREATION =======
 
 
 def create_code_review_agent():
     """
     Creates a LangGraph agent for code review based on the Viable Systems Model.
 
-    The agent follows the VSM structure:
-    - System 1 (Operations): Linting, security checking, complexity analysis
+    The agent follows the VSM structure with specialized personas for System 1:
+    - System 1 (Operations): Code Architect, Performance Guardian, Security Sentinel, Integration Specialist
     - System 2 (Coordination): Coordinating review comments
     - System 3 (Control): Managing the review process
     - System 4 (Intelligence): Analyzing PR context and environment
@@ -46,10 +33,11 @@ def create_code_review_agent():
     workflow = StateGraph(CodeReviewState)
 
     # Add nodes for each VSM system
-    # System 1: Operations
-    workflow.add_node("lint_code", system1_lint_code)
-    workflow.add_node("security_check", system1_security_check)
-    workflow.add_node("complexity_analysis", system1_complexity_analysis)
+    # System 1: Operations with specialized personas
+    workflow.add_node("code_architect", code_architect_review)
+    workflow.add_node("performance_guardian", performance_guardian_review)
+    workflow.add_node("security_sentinel", security_sentinel_review)
+    workflow.add_node("integration_specialist", integration_specialist_review)
 
     # System 2: Coordination
     workflow.add_node("coordinate_reviews", system2_coordinate_reviews)
@@ -72,9 +60,10 @@ def create_code_review_agent():
         "control_review_process",
         lambda state: state.current_agent if state.current_agent else END,
         {
-            "linter": "lint_code",
-            "security_checker": "security_check",
-            "complexity_analyzer": "complexity_analysis",
+            "code_architect": "code_architect",
+            "performance_guardian": "performance_guardian",
+            "security_sentinel": "security_sentinel",
+            "integration_specialist": "integration_specialist",
             "coordinator": "coordinate_reviews",
             "intelligence": "analyze_context",
             "policy": "make_review_decision",
@@ -83,9 +72,10 @@ def create_code_review_agent():
     )
 
     # All operations (System 1) go back to control
-    workflow.add_edge("lint_code", "control_review_process")
-    workflow.add_edge("security_check", "control_review_process")
-    workflow.add_edge("complexity_analysis", "control_review_process")
+    workflow.add_edge("code_architect", "control_review_process")
+    workflow.add_edge("performance_guardian", "control_review_process")
+    workflow.add_edge("security_sentinel", "control_review_process")
+    workflow.add_edge("integration_specialist", "control_review_process")
 
     # Coordination (System 2) goes back to control
     workflow.add_edge("coordinate_reviews", "control_review_process")
@@ -101,89 +91,3 @@ def create_code_review_agent():
     code_review_app = workflow.compile()
 
     return code_review_app
-
-
-# ======= USAGE EXAMPLE =======
-
-
-def run_code_review(pull_request: PullRequest, llm: Optional[ChatOllama] = None):
-    """
-    Runs a code review on the given pull request.
-
-    Args:
-        pull_request: The pull request to review
-        llm: Optional language model for AI-powered reviews
-
-    Returns:
-        The final state containing review results
-    """
-    # Create the agent
-    code_review_agent = create_code_review_agent()
-
-    # Create initial state
-    initial_state = CodeReviewState(
-        pull_request=pull_request,
-        messages=[
-            SystemMessage(content="Code review agent analyzing pull request."),
-            HumanMessage(
-                content=f"Please review PR #{pull_request.metadata.id}: {pull_request.metadata.title}"
-            ),
-        ],
-        # context={"llm": llm},
-    )
-
-    # Run the agent
-    final_state = code_review_agent.invoke(initial_state)
-
-    # Return the results
-    return final_state
-
-
-# Example usage
-if __name__ == "__main__":
-    # Create a sample pull request
-    sample_pr = PullRequest(
-        metadata=PullRequestMetadata(
-            id="123",
-            title="Add user authentication feature",
-            description="This PR implements basic user authentication using JWT tokens.",
-            author="john.doe",
-            base_branch="main",
-            head_branch="feature/auth",
-            created_at="2025-02-25T10:00:00Z",
-            updated_at="2025-02-26T09:30:00Z",
-        ),
-        files=[
-            CodeFile(
-                content="""
-import jwt
-from flask import request, jsonify
-
-def login():
-    username = request.json.get('username')
-    password = request.json.get('password')
-    
-    # TODO: Implement proper password hashing
-    if username == 'admin' and password == 'password123':
-        secret_key = 'my_super_secret_key'
-        token = jwt.encode({'user': username}, secret_key, algorithm='HS256')
-        return jsonify({'token': token})
-    
-    return jsonify({'error': 'Invalid credentials'}), 401
-                """,
-                metadata=FileMetadata(
-                    path="auth/login.py",
-                    language="python",
-                ),
-            )
-        ],
-    )
-
-    llm = ChatOllama(model="deepseek-r1:8b")
-    # Run the code review
-    result = run_code_review(sample_pr, llm=llm)
-
-    __import__("ipdb").set_trace()
-    # Print the review summary
-    print(result.outputs.get("review_summary", "No summary available"))
-    pass

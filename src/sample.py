@@ -5,8 +5,12 @@ from symposium.models.base import (
     CodeFile,
     FileMetadata,
 )
-from symposium.vsm.operational import system1_lint_code
-
+from symposium.vsm.operational import (
+    code_architect_review,
+    security_sentinel_review,
+    integration_specialist_review,
+    performance_guardian_review,
+)
 from langchain_core.messages import HumanMessage, SystemMessage
 
 
@@ -58,8 +62,25 @@ def login():
         # context={"llm": llm},
     )
     print("Created state, running")
-    new_state = system1_lint_code(code_state)
-    __import__("ipdb").set_trace()
+    # new_state = code_architect_review(code_state)
+    # for com in new_state.pull_request.comments:
+    #     print(com)
+    #
+    # print("-" * 80)
+    # new_state = security_sentinel_review(code_state)
+    # for com in new_state.pull_request.comments:
+    #     print(com)
+
+    print("-" * 80)
+    new_state = integration_specialist_review(code_state)
+    for com in new_state.pull_request.comments:
+        print(com)
+    #
+    # print("-" * 80)
+    # new_state = performance_guardian_review(code_state)
+    # for com in new_state.pull_request.comments:
+    #     print(com)
+    # __import__("ipdb").set_trace()
     pass
 
 

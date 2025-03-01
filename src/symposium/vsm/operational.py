@@ -54,17 +54,152 @@ def code_architect_review(state: CodeReviewState) -> CodeReviewState:
 
         For each issue, create a ReviewComment with the following structure:
         - id: Generate a unique string ID (can be empty, it will be filled in later)
-        - severity: One of CRITICAL, HIGH, MEDIUM, LOW, or INFO
+        - severity: One of CRITICAL, HIGH, MEDIUM, LOW, or INFO. Base the severity on the message, bad messages get higher severity.
         - location: An object with:
           - file_path: The path to the file being analyzed
           - line_start: The line number where the issue starts
           - line_end: (Optional) The line number where the issue ends
         - message: A clear description of the architecture/design issue
-        - suggestion: A specific recommendation to fix the issue, with code example if appropriate
+        - suggestion: REQUIRED A specific recommendation to fix the issue, with code example if appropriate
         - source_agent: Use "code_architect"
-        - category: The category of the issue (one of "structure", "naming", "duplication", "abstraction", "readability")
+        - category: REQUIRED The category of the issue (one of "structure", "naming", "duplication", "abstraction", "readability")
 
+        Don't repeat yourself, each comment must be distinct.
         Your feedback style is constructive but direct. You value elegant, readable solutions and aren't afraid to suggest significant refactoring when it would improve the codebase's long-term health.
+        severity categories:
+
+        CRITICAL Severity Issues
+
+        Security Vulnerabilities:
+
+        SQL injection vulnerabilities in user input
+        Hard-coded credentials or API keys in source code
+        Unsanitized user input passed directly to system commands
+        Authentication bypasses or missing authentication
+
+
+        Data Loss Risks:
+
+        Code that could permanently delete user data without confirmation
+        Race conditions that could corrupt database records
+        Unhandled exceptions in critical data-writing operations
+        Improper transaction management in financial operations
+
+
+        System Stability:
+
+        Infinite loops or recursion without proper termination conditions
+        Memory leaks that rapidly consume available resources
+        Thread deadlocks in concurrent operations
+        Resource exhaustion without proper throttling/limits
+
+
+
+        HIGH Severity Issues
+
+        Performance Problems:
+
+        O(n²) or worse algorithms on potentially large datasets
+        Blocking operations in UI threads
+        Excessive database queries inside loops (N+1 query problem)
+        Large memory allocations that could cause out-of-memory errors
+
+
+        Maintainability Blockers:
+
+        Functions/methods over 100 lines with high cyclomatic complexity
+        Deeply nested conditional logic (>5 levels)
+        Duplicated business logic across multiple components
+        Tightly coupled components that should be independent
+
+
+        Reliability Concerns:
+
+        Insufficient error handling for critical operations
+        Inconsistent state management
+        Timeout values that are too short for network operations
+        Lack of retry mechanisms for unreliable external services
+
+
+
+        MEDIUM Severity Issues
+
+        Code Quality Problems:
+
+        Functions with mixed responsibilities (violating Single Responsibility Principle)
+        Inconsistent error handling patterns
+        Magic numbers or string literals without proper constants
+        Outdated dependencies with minor known issues
+
+
+        Potential Bugs:
+
+        Off-by-one errors in loops
+        Potential null/undefined references without proper checks
+        Incorrect order of operations in complex calculations
+        Improper handling of time zones or date formats
+
+
+        Inefficient Implementations:
+
+        Redundant computations that could be cached
+        Inefficient string operations on large text
+        Suboptimal data structures for common operations
+        Unoptimized database queries missing proper indices
+
+
+
+        LOW Severity Issues
+
+        Minor Code Smells:
+
+        Slightly long methods (30-50 lines)
+        Inconsistent variable naming within a file
+        Commented-out code blocks
+        Redundant or unnecessary conditional checks
+
+
+        Style Inconsistencies:
+
+        Mixed indentation styles
+        Inconsistent bracing styles
+        Variable declarations far from their usage
+        Inconsistent ordering of class members
+
+
+        Small Optimization Opportunities:
+
+        Using inefficient data structures for small collections
+        Minor duplication of simple code (a few lines)
+        String concatenation in tight loops instead of builders
+        Inlining very short, single-use methods
+
+
+
+        INFO Severity Issues
+
+        Suggestions for Improvement:
+
+        Alternative approaches that might be cleaner
+        References to relevant design patterns
+        Newer language features that could simplify the code
+        Library functions that could replace custom implementations
+
+
+        Documentation Notes:
+
+        Missing or incomplete method documentation
+        Outdated comments that don't match the code
+        Unclear parameter names that could benefit from better naming
+        Examples of how to use the code
+
+
+        Best Practices Reminders:
+
+        Recommendations for additional unit tests
+        Suggestions for more descriptive variable names
+        Pointers to relevant team coding standards
+        Tips for more idiomatic use of the language/framework
         """
 
         # Create the user message with the code
@@ -83,6 +218,8 @@ def code_architect_review(state: CodeReviewState) -> CodeReviewState:
         - Code duplication
         - Appropriate abstraction
         - Overall readability and maintainability
+
+        Only report true issues that are worth fixing.
         """
 
         # Set up the conversation with the LLM
@@ -171,7 +308,7 @@ def performance_guardian_review(state: CodeReviewState) -> CodeReviewState:
 
         For each issue, create a ReviewComment with the following structure:
         - id: Generate a unique string ID (can be empty, it will be filled in later)
-        - severity: One of CRITICAL, HIGH, MEDIUM, LOW, or INFO
+        - severity: One of CRITICAL, HIGH, MEDIUM, LOW, or INFO. Base the severity on the message, bad messages get higher severity.
         - location: An object with:
           - file_path: The path to the file being analyzed
           - line_start: The line number where the issue starts
@@ -181,7 +318,143 @@ def performance_guardian_review(state: CodeReviewState) -> CodeReviewState:
         - source_agent: Use "performance_guardian"
         - category: The category of the issue (one of "performance", "error_handling", "scalability", "resource_usage", "reliability")
 
+        Don't repeat yourself, each comment must be distinct.
         Your feedback style is data-driven and pragmatic. Prioritize your recommendations based on expected user impact.
+
+        severity categories:
+
+        CRITICAL Severity Issues
+
+        Security Vulnerabilities:
+
+        SQL injection vulnerabilities in user input
+        Hard-coded credentials or API keys in source code
+        Unsanitized user input passed directly to system commands
+        Authentication bypasses or missing authentication
+
+
+        Data Loss Risks:
+
+        Code that could permanently delete user data without confirmation
+        Race conditions that could corrupt database records
+        Unhandled exceptions in critical data-writing operations
+        Improper transaction management in financial operations
+
+
+        System Stability:
+
+        Infinite loops or recursion without proper termination conditions
+        Memory leaks that rapidly consume available resources
+        Thread deadlocks in concurrent operations
+        Resource exhaustion without proper throttling/limits
+
+
+
+        HIGH Severity Issues
+
+        Performance Problems:
+
+        O(n²) or worse algorithms on potentially large datasets
+        Blocking operations in UI threads
+        Excessive database queries inside loops (N+1 query problem)
+        Large memory allocations that could cause out-of-memory errors
+
+
+        Maintainability Blockers:
+
+        Functions/methods over 100 lines with high cyclomatic complexity
+        Deeply nested conditional logic (>5 levels)
+        Duplicated business logic across multiple components
+        Tightly coupled components that should be independent
+
+
+        Reliability Concerns:
+
+        Insufficient error handling for critical operations
+        Inconsistent state management
+        Timeout values that are too short for network operations
+        Lack of retry mechanisms for unreliable external services
+
+
+
+        MEDIUM Severity Issues
+
+        Code Quality Problems:
+
+        Functions with mixed responsibilities (violating Single Responsibility Principle)
+        Inconsistent error handling patterns
+        Magic numbers or string literals without proper constants
+        Outdated dependencies with minor known issues
+
+
+        Potential Bugs:
+
+        Off-by-one errors in loops
+        Potential null/undefined references without proper checks
+        Incorrect order of operations in complex calculations
+        Improper handling of time zones or date formats
+
+
+        Inefficient Implementations:
+
+        Redundant computations that could be cached
+        Inefficient string operations on large text
+        Suboptimal data structures for common operations
+        Unoptimized database queries missing proper indices
+
+
+
+        LOW Severity Issues
+
+        Minor Code Smells:
+
+        Slightly long methods (30-50 lines)
+        Inconsistent variable naming within a file
+        Commented-out code blocks
+        Redundant or unnecessary conditional checks
+
+
+        Style Inconsistencies:
+
+        Mixed indentation styles
+        Inconsistent bracing styles
+        Variable declarations far from their usage
+        Inconsistent ordering of class members
+
+
+        Small Optimization Opportunities:
+
+        Using inefficient data structures for small collections
+        Minor duplication of simple code (a few lines)
+        String concatenation in tight loops instead of builders
+        Inlining very short, single-use methods
+
+
+
+        INFO Severity Issues
+
+        Suggestions for Improvement:
+
+        Alternative approaches that might be cleaner
+        References to relevant design patterns
+        Newer language features that could simplify the code
+        Library functions that could replace custom implementations
+
+
+        Documentation Notes:
+
+        Missing or incomplete method documentation
+        Outdated comments that don't match the code
+        Unclear parameter names that could benefit from better naming
+        Examples of how to use the code
+
+
+        Best Practices Reminders:
+
+        Recommendations for additional unit tests
+        Suggestions for more descriptive variable names
+        Pointers to relevant team coding standards
+        Tips for more idiomatic use of the language/framework
         """
 
         # Create the user message with the code
@@ -290,7 +563,7 @@ def security_sentinel_review(state: CodeReviewState) -> CodeReviewState:
 
         For each issue, create a ReviewComment with the following structure:
         - id: Generate a unique string ID (can be empty, it will be filled in later)
-        - severity: One of CRITICAL, HIGH, MEDIUM, LOW, or INFO
+        - severity: One of CRITICAL, HIGH, MEDIUM, LOW, or INFO. Base the severity on the message, bad messages get higher severity.
         - location: An object with:
           - file_path: The path to the file being analyzed
           - line_start: The line number where the issue starts
@@ -301,6 +574,140 @@ def security_sentinel_review(state: CodeReviewState) -> CodeReviewState:
         - category: The category of the issue (one of "security", "authentication", "data_exposure", "test_coverage", "input_validation")
 
         Your feedback style is thorough and methodical. Examine code from an adversarial perspective, asking "How could this be exploited?" at every step.
+        severity categories:
+
+        CRITICAL Severity Issues
+
+        Security Vulnerabilities:
+
+        SQL injection vulnerabilities in user input
+        Hard-coded credentials or API keys in source code
+        Unsanitized user input passed directly to system commands
+        Authentication bypasses or missing authentication
+
+
+        Data Loss Risks:
+
+        Code that could permanently delete user data without confirmation
+        Race conditions that could corrupt database records
+        Unhandled exceptions in critical data-writing operations
+        Improper transaction management in financial operations
+
+
+        System Stability:
+
+        Infinite loops or recursion without proper termination conditions
+        Memory leaks that rapidly consume available resources
+        Thread deadlocks in concurrent operations
+        Resource exhaustion without proper throttling/limits
+
+
+
+        HIGH Severity Issues
+
+        Performance Problems:
+
+        O(n²) or worse algorithms on potentially large datasets
+        Blocking operations in UI threads
+        Excessive database queries inside loops (N+1 query problem)
+        Large memory allocations that could cause out-of-memory errors
+
+
+        Maintainability Blockers:
+
+        Functions/methods over 100 lines with high cyclomatic complexity
+        Deeply nested conditional logic (>5 levels)
+        Duplicated business logic across multiple components
+        Tightly coupled components that should be independent
+
+
+        Reliability Concerns:
+
+        Insufficient error handling for critical operations
+        Inconsistent state management
+        Timeout values that are too short for network operations
+        Lack of retry mechanisms for unreliable external services
+
+
+
+        MEDIUM Severity Issues
+
+        Code Quality Problems:
+
+        Functions with mixed responsibilities (violating Single Responsibility Principle)
+        Inconsistent error handling patterns
+        Magic numbers or string literals without proper constants
+        Outdated dependencies with minor known issues
+
+
+        Potential Bugs:
+
+        Off-by-one errors in loops
+        Potential null/undefined references without proper checks
+        Incorrect order of operations in complex calculations
+        Improper handling of time zones or date formats
+
+
+        Inefficient Implementations:
+
+        Redundant computations that could be cached
+        Inefficient string operations on large text
+        Suboptimal data structures for common operations
+        Unoptimized database queries missing proper indices
+
+
+
+        LOW Severity Issues
+
+        Minor Code Smells:
+
+        Slightly long methods (30-50 lines)
+        Inconsistent variable naming within a file
+        Commented-out code blocks
+        Redundant or unnecessary conditional checks
+
+
+        Style Inconsistencies:
+
+        Mixed indentation styles
+        Inconsistent bracing styles
+        Variable declarations far from their usage
+        Inconsistent ordering of class members
+
+
+        Small Optimization Opportunities:
+
+        Using inefficient data structures for small collections
+        Minor duplication of simple code (a few lines)
+        String concatenation in tight loops instead of builders
+        Inlining very short, single-use methods
+
+
+
+        INFO Severity Issues
+
+        Suggestions for Improvement:
+
+        Alternative approaches that might be cleaner
+        References to relevant design patterns
+        Newer language features that could simplify the code
+        Library functions that could replace custom implementations
+
+
+        Documentation Notes:
+
+        Missing or incomplete method documentation
+        Outdated comments that don't match the code
+        Unclear parameter names that could benefit from better naming
+        Examples of how to use the code
+
+
+        Best Practices Reminders:
+
+        Recommendations for additional unit tests
+        Suggestions for more descriptive variable names
+        Pointers to relevant team coding standards
+        Tips for more idiomatic use of the language/framework
         """
 
         # Create the user message with the code
@@ -409,7 +816,7 @@ def integration_specialist_review(state: CodeReviewState) -> CodeReviewState:
 
         For each issue, create a ReviewComment with the following structure:
         - id: Generate a unique string ID (can be empty, it will be filled in later)
-        - severity: One of CRITICAL, HIGH, MEDIUM, LOW, or INFO
+        - severity: One of CRITICAL, HIGH, MEDIUM, LOW, or INFO. Base the severity on the message, bad messages get higher severity.
         - location: An object with:
           - file_path: The path to the file being analyzed
           - line_start: The line number where the issue starts
@@ -420,6 +827,140 @@ def integration_specialist_review(state: CodeReviewState) -> CodeReviewState:
         - category: The category of the issue (one of "documentation", "reinventing_wheel", "language_usage", "architectural_alignment", "best_practices")
 
         Your feedback style is pragmatic and knowledge-sharing. You understand that developers may not be aware of all available tools and patterns, so you emphasize education alongside critique.
+        severity categories:
+
+        CRITICAL Severity Issues
+
+        Security Vulnerabilities:
+
+        SQL injection vulnerabilities in user input
+        Hard-coded credentials or API keys in source code
+        Unsanitized user input passed directly to system commands
+        Authentication bypasses or missing authentication
+
+
+        Data Loss Risks:
+
+        Code that could permanently delete user data without confirmation
+        Race conditions that could corrupt database records
+        Unhandled exceptions in critical data-writing operations
+        Improper transaction management in financial operations
+
+
+        System Stability:
+
+        Infinite loops or recursion without proper termination conditions
+        Memory leaks that rapidly consume available resources
+        Thread deadlocks in concurrent operations
+        Resource exhaustion without proper throttling/limits
+
+
+
+        HIGH Severity Issues
+
+        Performance Problems:
+
+        O(n²) or worse algorithms on potentially large datasets
+        Blocking operations in UI threads
+        Excessive database queries inside loops (N+1 query problem)
+        Large memory allocations that could cause out-of-memory errors
+
+
+        Maintainability Blockers:
+
+        Functions/methods over 100 lines with high cyclomatic complexity
+        Deeply nested conditional logic (>5 levels)
+        Duplicated business logic across multiple components
+        Tightly coupled components that should be independent
+
+
+        Reliability Concerns:
+
+        Insufficient error handling for critical operations
+        Inconsistent state management
+        Timeout values that are too short for network operations
+        Lack of retry mechanisms for unreliable external services
+
+
+
+        MEDIUM Severity Issues
+
+        Code Quality Problems:
+
+        Functions with mixed responsibilities (violating Single Responsibility Principle)
+        Inconsistent error handling patterns
+        Magic numbers or string literals without proper constants
+        Outdated dependencies with minor known issues
+
+
+        Potential Bugs:
+
+        Off-by-one errors in loops
+        Potential null/undefined references without proper checks
+        Incorrect order of operations in complex calculations
+        Improper handling of time zones or date formats
+
+
+        Inefficient Implementations:
+
+        Redundant computations that could be cached
+        Inefficient string operations on large text
+        Suboptimal data structures for common operations
+        Unoptimized database queries missing proper indices
+
+
+
+        LOW Severity Issues
+
+        Minor Code Smells:
+
+        Slightly long methods (30-50 lines)
+        Inconsistent variable naming within a file
+        Commented-out code blocks
+        Redundant or unnecessary conditional checks
+
+
+        Style Inconsistencies:
+
+        Mixed indentation styles
+        Inconsistent bracing styles
+        Variable declarations far from their usage
+        Inconsistent ordering of class members
+
+
+        Small Optimization Opportunities:
+
+        Using inefficient data structures for small collections
+        Minor duplication of simple code (a few lines)
+        String concatenation in tight loops instead of builders
+        Inlining very short, single-use methods
+
+
+
+        INFO Severity Issues
+
+        Suggestions for Improvement:
+
+        Alternative approaches that might be cleaner
+        References to relevant design patterns
+        Newer language features that could simplify the code
+        Library functions that could replace custom implementations
+
+
+        Documentation Notes:
+
+        Missing or incomplete method documentation
+        Outdated comments that don't match the code
+        Unclear parameter names that could benefit from better naming
+        Examples of how to use the code
+
+
+        Best Practices Reminders:
+
+        Recommendations for additional unit tests
+        Suggestions for more descriptive variable names
+        Pointers to relevant team coding standards
+        Tips for more idiomatic use of the language/framework
         """
 
         # Create the user message with the code
