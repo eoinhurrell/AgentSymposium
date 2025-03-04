@@ -1,0 +1,54 @@
+[project]
+name = "agentsymposium"
+version = "0.1.0"
+description = "Multi-Agent Code Review System based on Viable System Model"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "langchain>=0.3.19",
+    "langchain-ollama>=0.2.3",
+    "langgraph>=0.2.74",
+    "pydantic>=2.10.5",
+]
+
+[dependency-groups]
+dev = [
+  "black>=25.1.0",
+  "ipdb>=0.13.13",
+  "isort>=6.0.0",
+  "mypy>=1.15.0",
+  "pylint>=3.3.4",
+  "pytest>=8.3.4",
+  "pytest-asyncio>=0.25.3",
+  "pytest-cov>=6.0.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["symposium"]
+
+[tool.pytest]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+python_classes = "Test*"
+pythonpath = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
