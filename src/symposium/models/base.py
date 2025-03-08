@@ -64,6 +64,10 @@ class ReviewComment(BaseModel):
         return result
 
 
+class ReviewResult(BaseModel):
+    comments: List[ReviewComment] = Field(default_factory=list)
+
+
 class FileMetadata(BaseModel):
     """Metadata for a code file."""
 
