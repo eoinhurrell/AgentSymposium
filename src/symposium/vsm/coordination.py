@@ -144,7 +144,7 @@ Great code review comments:
 - Focus on improving the code, not criticizing the developer
 
 For each location with issues, create one or more ReviewComment objects with:
-- severity: Appropriate level based on impact (CRITICAL, HIGH, MEDIUM, LOW, or INFO)
+- severity: Appropriate level based on impact (CRITICAL, HIGH, MEDIUM, LOW, or INFO). Original reported severity is important, it is in square brackets.
 - location: The file path and line information (already provided in each section)
 - message: Clear explanation of the issue and why it matters
 - suggestion: Specific recommendation with example code when appropriate
@@ -200,7 +200,9 @@ For each location with issues, create one or more ReviewComment objects with:
         )
 
         for i, comment in enumerate(sorted_comments, 1):
-            comment_text = f"  {i}. [{comment.severity.upper()}] {comment.message}\n"
+            comment_text = (
+                f"  {i}. SEVERITY: [{comment.severity.upper()}] {comment.message}\n"
+            )
             all_issues_text += comment_text
 
             if comment.suggestion:

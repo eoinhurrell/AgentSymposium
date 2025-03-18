@@ -13,6 +13,36 @@ from symposium.models.base import (
     ReviewResult,
 )
 
+# from langgraph.prebuilt import create_react_agent
+# from langchain_openai import ChatOpenAI
+# from langchain_core.tools import tool
+#
+# # Below is one example of a tool definition
+# @tool
+# def get_stock_price(symbol: str) -> dict:
+#     """Fetch the current stock price for a given symbol.
+#     Args:
+#         symbol (str): The stock ticker symbol (e.g., "AAPL" for Apple Inc.).
+#     Returns:
+#         dict: A dictionary containing the stock price or an error message.
+#     """
+#     base_url = "https://financialmodelingprep.com/api/v3/quote-short"
+#     params = {"symbol": symbol, "apikey": os.getenv("FMP_API_KEY")}
+#
+#     response = requests.get(base_url, params=params)
+#     if response.status_code == 200:
+#         data = response.json()
+#         if data:
+#             return {"price": data[0]["price"]}
+#     return {"error": "Unable to fetch stock price."}
+#
+# # Below is one example of a simple react agent
+# financial_data_agent = create_react_agent(
+#     ChatOpenAI(model="gpt-4o-mini"),
+#     tools=[get_stock_price, get_company_profile, ...],
+#     state_modifier="You are a financial data agent responsible for retrieving financial data using the provided API tools ...",
+# )
+
 # Centralized configuration
 MODEL = "MFDoom/deepseek-r1-tool-calling"
 
