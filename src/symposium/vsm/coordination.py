@@ -1,53 +1,390 @@
-# ======= VSM SYSTEM 2: COORDINATION =======
-# Coordinates the operational units and resolves conflicts
+from typing import List, Dict, Set
+from collections import defaultdict
+import logging
+import json
+import uuid
+import re
 
 from langchain_core.messages import AIMessage
 
+from langchain_ollama import ChatOllama
+
 from symposium.models.base import (
-    SeverityLevel,
+    ReviewComment,
+    ReviewResult,
     CodeReviewState,
+    CodeLocation,
+    SeverityLevel,
 )
 
+import uuid
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from pydantic import BaseModel, Field
+from typing import List, Dict, Optional, Any
+from langchain_ollama import ChatOllama
 
-def system2_coordinate_reviews(state: CodeReviewState) -> CodeReviewState:
+from symposium.tools import run_linter
+from symposium.models.base import (
+    SeverityLevel,
+    CodeLocation,
+    ReviewComment,
+    CodeReviewState,
+    ReviewResult,
+)
+
+MODEL = "MFDoom/deepseek-r1-tool-calling"
+# Setup logger
+logger = logging.getLogger("coordination_agent")
+
+
+def process_comments(comments: List[ReviewComment]) -> List[ReviewComment]:
     """
-    VSM System 2: Coordination
-    Coordinates the different reviews, removes duplicates, and groups related comments.
+    Process the comments to organize them by line location and group related comments.
+
+    Args:
+        comments: List of ReviewComment objects to process
+
+    Returns:
+        List of processed ReviewComment objects
     """
-    print("COORDINATION")
-    new_state = state.model_copy(deep=True)
+    # Step 1: Organize comments by file path and line location
+    comments_by_location = defaultdict(list)
 
-    # Group comments by location
-    location_to_comments = {}
-    for comment in new_state.pull_request.comments:
-        location_str = str(comment.location)
-        if location_str not in location_to_comments:
-            location_to_comments[location_str] = []
-        location_to_comments[location_str].append(comment)
-
-    # Identify duplicates and related comments
-    for location, comments in location_to_comments.items():
-        if len(comments) > 1:
-            # Sort by severity (highest first)
-            sorted_by_severity = sorted(
-                comments, key=lambda c: list(SeverityLevel).index(c.severity)
-            )
-
-            # Keep track of comment IDs to relate them
-            comment_ids = [comment.id for comment in comments if comment.id]
-
-            # Update related_comment_ids for all comments in this location
-            for comment in comments:
-                if comment.id:
-                    related_ids = [cid for cid in comment_ids if cid != comment.id]
-                    comment.related_comment_ids = related_ids
-
-    # Add a message about the coordination
-    locations_count = len(location_to_comments)
-    new_state.messages.append(
-        AIMessage(
-            content=f"Coordinated {len(new_state.pull_request.comments)} review comments across {locations_count} locations."
+    for comment in comments:
+        # Use line_end if it exists, otherwise use line_start
+        line_location = (
+            comment.location.line_end
+            if comment.location.line_end
+            else comment.location.line_start
         )
+        location_key = f"{comment.location.file_path}:{line_location}"
+        comments_by_location[location_key].append(comment)
+
+    # Step 2: Print the grouped comments
+    print_grouped_comments(comments_by_location)
+    summ = summarize_grouped_comments(comments_by_location)
+    __import__("ipdb").set_trace()
+
+    # Step 3: Return the original comments in order (ungrouped)
+    # Sort comments by file path and line number for consistency
+    return sorted(
+        comments,
+        key=lambda c: (
+            c.location.file_path,
+            c.location.line_start or 0,
+            c.location.line_end or c.location.line_start or 0,
+        ),
     )
 
-    return new_state
+
+def print_grouped_comments(
+    comments_by_location: Dict[str, List[ReviewComment]],
+) -> None:
+    """
+    Print the grouped comments in a readable format.
+
+    Args:
+        comments_by_location: Dictionary with location keys and lists of comments
+    """
+    logger.info(
+        f"Grouped comments by location (total groups: {len(comments_by_location)})"
+    )
+    for location_key, comment_group in comments_by_location.items():
+        logger.info(f"\nLocation: {location_key} - {len(comment_group)} comments")
+        for i, comment in enumerate(comment_group, 1):
+            logger.info(f"  {i}. [{comment.severity.upper()}] {comment.message}")
+            if comment.suggestion:
+                logger.info(f"     Suggestion: {comment.suggestion}")
+            logger.info(f"     Source: {comment.source_agent or 'Unknown agent'}")
+
+
+def summarize_grouped_comments(
+    comments_by_location: Dict[str, List[ReviewComment]],
+    model_name: str = MODEL,  # Default model, can be overridden
+) -> List[ReviewComment]:
+    """
+    Create professional code review comments from groups of issues on a line.
+
+    Takes grouped comments by location and uses an LLM to generate well-worded,
+    professional code review comments that a senior developer would write.
+    Makes a single LLM call for all issues rather than one per group.
+
+    Args:
+        comments_by_location: Dictionary with location keys and lists of comments
+        model_name: Name of the language model to use (default: "llama3")
+
+    Returns:
+        List of ReviewComment objects generated by the LLM
+    """
+    logger.info(
+        f"Summarizing grouped comments (total groups: {len(comments_by_location)})"
+    )
+
+    # List to store the generated review comments
+    summarized_comments = []
+
+    # Create a specialized prompt for generating professional code review comments
+    system_prompt = """You are a Principal Software Engineer with 15+ years of experience doing code reviews.
+
+Your task is to analyze grouped code review issues and synthesize them into clear, constructive, and actionable feedback. 
+
+When creating code review comments:
+1. Focus on clarity and professionalism - write as a senior developer following best practices would
+2. Prioritize issues by importance (critical issues first)
+3. Consolidate related issues into cohesive feedback
+4. Explain WHY each issue matters, not just WHAT is wrong
+5. Provide specific, executable code examples in your suggestions
+6. Maintain a tone that is constructive, educational, and respectful
+
+Great code review comments:
+- Are precise and actionable
+- Teach underlying principles, not just fixes
+- Include example code that demonstrates best practices
+- Use a professional but empathetic tone
+- Focus on improving the code, not criticizing the developer
+
+For each location with issues, create one or more ReviewComment objects with:
+- severity: Appropriate level based on impact (CRITICAL, HIGH, MEDIUM, LOW, or INFO). Original reported severity is important, it is in square brackets.
+- location: The file path and line information (already provided in each section)
+- message: Clear explanation of the issue and why it matters
+- suggestion: Specific recommendation with example code when appropriate
+- source_agent: "coordination_agent"
+- category: Best fitting category for the issue
+"""
+
+    # Dictionary to track location info for each group
+    location_info_map = {}
+
+    # Build a comprehensive issues summary for all locations
+    all_issues_text = ""
+
+    # Sort location keys for consistent ordering
+    sorted_location_keys = sorted(comments_by_location.keys())
+
+    # Process all location groups and build a single comprehensive prompt
+    for location_key in sorted_location_keys:
+        comment_group = comments_by_location[location_key]
+
+        # Skip empty comment groups
+        if not comment_group:
+            continue
+
+        # Extract file path and line number from the location key
+        try:
+            file_path, line_number_str = location_key.split(":", 1)
+            line_number = int(line_number_str)
+            # Store location info for later reference
+            location_info_map[location_key] = {
+                "file_path": file_path,
+                "line_number": line_number,
+            }
+        except (ValueError, IndexError):
+            logger.warning(f"Invalid location key format: {location_key}")
+            continue
+
+        # Start a new section for this location
+        all_issues_text += (
+            f"\n## LOCATION: {location_key} ({len(comment_group)} comments)\n\n"
+        )
+
+        # Sort comments by severity (most severe first)
+        severity_order = {
+            SeverityLevel.CRITICAL: 0,
+            SeverityLevel.HIGH: 1,
+            SeverityLevel.MEDIUM: 2,
+            SeverityLevel.LOW: 3,
+            SeverityLevel.INFO: 4,
+        }
+        sorted_comments = sorted(
+            comment_group, key=lambda c: severity_order.get(c.severity, 5)
+        )
+
+        for i, comment in enumerate(sorted_comments, 1):
+            comment_text = (
+                f"  {i}. SEVERITY: [{comment.severity.upper()}] {comment.message}\n"
+            )
+            all_issues_text += comment_text
+
+            if comment.suggestion:
+                suggestion_text = f"     Suggestion: {comment.suggestion}\n"
+                all_issues_text += suggestion_text
+
+            source_text = f"     Source: {comment.source_agent or 'Unknown agent'}\n"
+            all_issues_text += source_text
+            all_issues_text += "-" * 40 + "\n"
+
+    # Skip processing if no valid issues were found
+    if not all_issues_text.strip():
+        logger.warning("No valid issues found to summarize")
+        return summarized_comments
+
+    # Create a single user prompt with all issues to analyze
+    user_prompt = f"""
+Review and synthesize the following code issues found across multiple locations.
+For each location, create appropriate professional code review comments.
+
+{all_issues_text}
+
+For each location marked with "## LOCATION:", create professional code review comments that:
+1. Address all significant issues for that location, prioritizing from most to least severe
+2. Combine related issues when it makes the feedback more effective
+3. Clearly explain why each issue matters to code quality, maintainability, or performance
+4. Provide specific, actionable suggestions with example code when helpful
+
+When responding:
+- Organize your response into sections by location (using the same location markers)
+- For each location, return a list of ReviewComment objects
+- Each comment should have the correct location information already provided
+- Preserve the exact file paths and line numbers as given
+
+Each ReviewComment should have:
+- severity: Appropriate level based on impact (CRITICAL, HIGH, MEDIUM, LOW, INFO)
+- location: The file path and line number from the location section
+- message: Clear explanation of the issue and its importance
+- suggestion: Specific recommendation with code examples when appropriate
+- source_agent: "coordination_agent"
+- category: An appropriate category for the issue type
+"""
+
+    try:
+        # Initialize the LLM
+        llm = ChatOllama(model=model_name)
+        llm_with_structured_output = llm.with_structured_output(
+            ReviewResult, method="json_schema"
+        )
+
+        # Set up the conversation
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_prompt),
+        ]
+
+        # Generate the review comments with the LLM in a single call
+        result = llm_with_structured_output.invoke(messages)
+
+        # Process and add the generated comments
+        for comment in result.comments:
+            # Get location info from either the comment or the first location
+            if not comment.location or not comment.location.file_path:
+                # If no location specified, use the first location as fallback
+                if location_info_map:
+                    first_location = next(iter(location_info_map.values()))
+                    comment.location = CodeLocation(
+                        file_path=first_location["file_path"],
+                        line_start=first_location["line_number"],
+                    )
+
+            # Generate a unique ID
+            comment.id = str(uuid.uuid4())
+
+            # Add to the summarized comments list
+            summarized_comments.append(comment)
+
+    except Exception as e:
+        logger.error(f"Error generating review comments: {str(e)}", exc_info=True)
+        # Create fallback comments when LLM processing fails
+        for location_key, location_info in location_info_map.items():
+            comment_group = comments_by_location[location_key]
+            if not comment_group:
+                continue
+
+            # Create a fallback comment for each location
+            severity = max(
+                (c.severity for c in comment_group), default=SeverityLevel.MEDIUM
+            )
+            fallback_comment = ReviewComment(
+                id=str(uuid.uuid4()),
+                severity=severity,
+                location=CodeLocation(
+                    file_path=location_info["file_path"],
+                    line_start=location_info["line_number"],
+                ),
+                message=f"Multiple issues were identified in this code section that require attention.",
+                suggestion="Review the individual comments for specific suggestions on how to address these issues.",
+                source_agent="coordination_agent",
+                category="multiple_issues",
+            )
+            summarized_comments.append(fallback_comment)
+
+    logger.info(f"Generated {len(summarized_comments)} summarized review comments")
+    return summarized_comments
+
+
+def coordinate_comments(state: CodeReviewState) -> CodeReviewState:
+    """
+    System 2: Coordination Agent function
+    Manages communication between System 1 agents, prevents redundant comments,
+    resolves minor conflicts, and groups related feedback.
+
+    Args:
+        state: The current LangGraph state containing the pull request and agent outputs
+
+    Returns:
+        Updated state with coordinated comments
+    """
+    # Mark this component as run
+    state.components_run.add("coordination_agent")
+    state.current_agent = "coordination_agent"
+
+    try:
+        # Check if we have a pull request to work with
+        if not state.pull_request:
+            logger.warning("No pull request available in state")
+            state.messages.append(
+                AIMessage(content="Coordination agent: No pull request to review")
+            )
+            return state
+
+        logger.info(
+            f"Starting comment coordination for PR #{state.pull_request.metadata.id}"
+        )
+
+        # Process comments if they exist
+        if not state.pull_request.comments:
+            logger.info("No comments to coordinate")
+            state.messages.append(
+                AIMessage(content="Coordination agent: No comments to coordinate")
+            )
+            return state
+
+        # Get the comments from the pull request
+        original_comments = state.pull_request.comments
+
+        # Process the comments
+        coordinated_comments = process_comments(original_comments)
+
+        # Update the pull request with the coordinated comments
+        state.pull_request.comments = coordinated_comments
+
+        # Store coordination results in outputs
+        state.outputs["coordination_results"] = {
+            "original_comment_count": len(original_comments),
+            "coordinated_comment_count": len(coordinated_comments),
+            "grouped_locations": len(
+                set(
+                    f"{c.location.file_path}:{c.location.line_end or c.location.line_start}"
+                    for c in original_comments
+                )
+            ),
+        }
+
+        # Add a message about the coordination
+        state.messages.append(
+            AIMessage(
+                content=f"Coordination agent: Processed {len(original_comments)} comments into {len(coordinated_comments)} coordinated comments across {state.outputs['coordination_results']['grouped_locations']} locations"
+            )
+        )
+
+        logger.info(
+            f"Completed comment coordination. Original: {len(original_comments)}, Final: {len(coordinated_comments)}"
+        )
+
+    except Exception as e:
+        logger.error(f"Error in comment coordination: {str(e)}", exc_info=True)
+        state.messages.append(
+            AIMessage(
+                content=f"Coordination agent: Error occurred during coordination: {str(e)}"
+            )
+        )
+
+    return state

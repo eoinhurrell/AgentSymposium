@@ -11,6 +11,7 @@ from symposium.vsm.operational import (
     integration_specialist_review,
     performance_guardian_review,
 )
+from symposium.vsm.coordination import coordinate_comments
 from langchain_core.messages import HumanMessage, SystemMessage
 
 
@@ -62,25 +63,23 @@ def login():
         # context={"llm": llm},
     )
     print("Created state, running")
-    # new_state = code_architect_review(code_state)
-    # for com in new_state.pull_request.comments:
-    #     print(com)
-    #
-    # print("-" * 80)
-    # new_state = security_sentinel_review(code_state)
-    # for com in new_state.pull_request.comments:
-    #     print(com)
+    code_state = code_architect_review(code_state)
 
     print("-" * 80)
-    new_state = integration_specialist_review(code_state)
-    for com in new_state.pull_request.comments:
+    code_state = security_sentinel_review(code_state)
+
+    print("-" * 80)
+    code_state = integration_specialist_review(code_state)
+
+    print("-" * 80)
+    code_state = performance_guardian_review(code_state)
+    for com in code_state.pull_request.comments:
         print(com)
-    #
-    # print("-" * 80)
-    # new_state = performance_guardian_review(code_state)
-    # for com in new_state.pull_request.comments:
-    #     print(com)
-    # __import__("ipdb").set_trace()
+
+    operational = code_state.model_copy(deep=True)
+    coordinated = coordinate_comments(code_state)
+    exit()
+    __import__("ipdb").set_trace()
     pass
 
 
